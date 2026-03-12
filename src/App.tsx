@@ -8,51 +8,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import { xtreamService } from '@/src/services/xtreamService';
 import { epgService, EPGData } from '@/src/services/epgService';
 import { Logo } from '@/src/components/Logo';
-import { VideoPlayer } from '@/src/components/VideoPlayer';
 import { LivePlayer } from '@/src/components/LivePlayer';
+import { VodPlayer } from '@/src/components/VodPlayer';
 import { XtreamAuthResponse, XtreamCategory, XtreamStream } from '@/src/types';
-
-const PosterImage = ({ stream, type }: { stream: XtreamStream, type: 'movies' | 'series' }) => {
-  const [posterUrl, setPosterUrl] = useState<string | null>(stream.stream_icon || stream.thumbnail || null);
-  const [isSearching, setIsSearching] = useState(false);
-
-  useEffect(() => {
-    if (!posterUrl && !isSearching) {
-      setIsSearching(true);
-      xtreamService.findMissingPoster(stream.name, type === 'movies' ? 'movie' : 'series')
-        .then(url => {
-          if (url) setPosterUrl(url);
-          setIsSearching(false);
-        })
-        .catch(() => setIsSearching(false));
-    }
-  }, [stream.name, type, posterUrl, isSearching]);
-
-  return (
-    <div className="aspect-[2/3] relative bg-black/40 overflow-hidden">
-      {posterUrl ? (
-        <img 
-          src={posterUrl} 
-          alt={stream.name} 
-          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
-          referrerPolicy="no-referrer"
-          loading="lazy"
-        />
-      ) : (
-        <div className="w-full h-full flex items-center justify-center bg-white/5">
-          {isSearching ? (
-            <div className="flex flex-col items-center gap-2">
-              <div className="w-4 h-4 border-2 border-neon-blue border-t-transparent rounded-full animate-spin" />
-              <span className="text-[6px] text-white/40 uppercase font-bold">Buscando capa...</span>
-            </div>
-          ) : (
-            type === 'movies' ? <Film className="w-6 h-6 sm:w-8 sm:h-8 opacity-10" /> : <Clapperboard className="w-6 h-6 sm:w-8 sm:h-8 opacity-10" />
-          )}
-        </div>
-      )}
-    </div>
-  );
-};
 
 const LoadingOverlay = () => (
   <div className="fixed inset-0 bg-bg-deep/90 backdrop-blur-md flex flex-col items-center justify-center z-50">
@@ -153,7 +111,7 @@ export default function App() {
   const handleSetView = (newView: typeof view) => {
     setPreviousView(view);
     setView(newView);
-    setActiveStream(null);
+    setSelectedStream(null);
   };
   const [auth, setAuth] = useState<XtreamAuthResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -175,7 +133,7 @@ export default function App() {
     series: { categories: [], streams: [] }
   });
 
-  const [activeStream, setActiveStream] = useState<XtreamStream | null>(null);
+  const [selectedStream, setSelectedStream] = useState<XtreamStream | null>(null);
   const [selectedEpgChannel, setSelectedEpgChannel] = useState<XtreamStream | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
@@ -646,7 +604,7 @@ export default function App() {
                       whileHover={{ x: 3 }}
                       whileTap={{ scale: 0.99 }}
                       onClick={() => {
-                        setActiveStream(stream);
+                        setSelectedStream(stream);
                         addToHistory(stream);
                       }}
                       className="bg-white/5 border border-white/5 rounded-md p-1.5 flex items-center gap-2 cursor-pointer hover:bg-white/10 transition-all group shadow-sm relative"
@@ -691,7 +649,7 @@ export default function App() {
                     whileHover={{ scale: 1.05, zIndex: 10 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={() => {
-                      setActiveStream(stream);
+                      setSelectedStream(stream);
                       addToHistory(stream);
                     }}
                     className="bg-white/5 rounded-lg overflow-hidden border border-white/10 cursor-pointer group flex flex-col shadow-lg hover:shadow-neon-blue/20 transition-all duration-200 relative"
@@ -705,7 +663,21 @@ export default function App() {
                     >
                       <Star className={`w-3 h-3 sm:w-4 sm:h-4 ${favorites.some(f => f.stream_id === stream.stream_id) ? 'fill-neon-blue text-neon-blue drop-shadow-[0_0_8px_rgba(10,132,255,0.8)]' : 'text-white/50 hover:text-white'}`} />
                     </button>
-                    <PosterImage stream={stream} type={type as 'movies' | 'series'} />
+                    <div className="aspect-[2/3] relative bg-black/40 overflow-hidden">
+                      {stream.stream_icon || stream.thumbnail ? (
+                        <img 
+                          src={stream.stream_icon || stream.thumbnail} 
+                          alt={stream.name} 
+                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                          referrerPolicy="no-referrer"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-white/5">
+                          {type === 'movies' || stream.stream_type === 'movie' ? <Film className="w-6 h-6 sm:w-8 sm:h-8 opacity-10" /> : <Clapperboard className="w-6 h-6 sm:w-8 sm:h-8 opacity-10" />}
+                        </div>
+                      )}
+                    </div>
                     <div className="p-1.5 sm:p-2 flex-1 flex flex-col justify-center bg-black/20 border-t border-white/5">
                       <p className="text-[8px] sm:text-[10px] font-black italic uppercase tracking-tighter line-clamp-2 text-center leading-tight group-hover:text-neon-blue transition-colors">
                         {stream.name}
@@ -811,12 +783,10 @@ export default function App() {
                 {/* Mini Player Area */}
                 <div className="h-[30vh] sm:h-[40vh] shrink-0 bg-black relative border-b border-white/10">
                   {auth && (
-                    <VideoPlayer
-                      url={selectedChannel.direct_source || xtreamService.getStreamUrl(auth.user_info.username, auth.user_info.password, selectedChannel.stream_id, 'm3u8')}
+                    <LivePlayer
+                      url={selectedChannel.direct_source ? xtreamService.getProxiedUrl(selectedChannel.direct_source) : xtreamService.getStreamUrl(auth.user_info.username, auth.user_info.password, selectedChannel.stream_id, 'm3u8')}
                       title={selectedChannel.name}
-                      type="live"
-                      isFavorite={favorites.some(f => f.stream_id === selectedChannel.stream_id)}
-                      onToggleFavorite={() => toggleFavorite(selectedChannel)}
+                      onClose={() => setSelectedEpgChannel(null)}
                       inline={true}
                     />
                   )}
@@ -945,31 +915,21 @@ export default function App() {
 
       {loading && <LoadingOverlay />}
 
-      {activeStream && auth && (
-        activeStream.stream_type === 'live' ? (
+      {selectedStream && auth && (
+        selectedStream.stream_type === 'live' ? (
           <LivePlayer
-            url={
-              activeStream.direct_source ? activeStream.direct_source :
-              xtreamService.getStreamUrl(auth.user_info.username, auth.user_info.password, activeStream.stream_id, 'm3u8')
-            }
-            title={activeStream.name}
-            isFavorite={favorites.some(f => f.stream_id === activeStream.stream_id)}
-            onClose={() => setActiveStream(null)}
-            onToggleFavorite={() => toggleFavorite(activeStream)}
+            url={selectedStream.direct_source ? xtreamService.getProxiedUrl(selectedStream.direct_source) : xtreamService.getStreamUrl(auth.user_info.username, auth.user_info.password, selectedStream.stream_id, 'm3u8')}
+            title={selectedStream.name}
+            onClose={() => setSelectedStream(null)}
           />
         ) : (
-          <VideoPlayer
-            url={
-              activeStream.direct_source ? activeStream.direct_source :
-              activeStream.stream_type === 'movie' ? xtreamService.getMovieUrl(auth.user_info.username, auth.user_info.password, activeStream.stream_id, activeStream.container_extension || 'mp4') :
-              xtreamService.getSeriesUrl(auth.user_info.username, auth.user_info.password, activeStream.stream_id, activeStream.container_extension || 'mp4')
-            }
-            title={activeStream.name}
-            type="vod"
-            isFavorite={favorites.some(f => f.stream_id === activeStream.stream_id)}
-            onClose={() => setActiveStream(null)}
-            onToggleFavorite={() => toggleFavorite(activeStream)}
-          />
+          <VodPlayer
+  url={selectedStream.stream_type === 'movie' 
+    ? xtreamService.getMovieUrl(auth?.user_info?.username || '', auth?.user_info?.password || '', selectedStream.stream_id, selectedStream.container_extension || 'mp4') 
+    : xtreamService.getSeriesUrl(auth?.user_info?.username || '', auth?.user_info?.password || '', selectedStream.stream_id, selectedStream.container_extension || 'mp4')}
+  title={selectedStream.name}
+  onClose={() => setSelectedStream(null)}
+/>
         )
       )}
 

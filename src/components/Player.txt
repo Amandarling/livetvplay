@@ -1,0 +1,277 @@
+import React, { useEffect, useRef, useState } from 'react';
+import Hls from 'hls.js';
+import mpegts from 'mpegts.js';
+import { ArrowLeft, Star, RotateCcw, RotateCw, Play, Pause, Volume2, VolumeX, Maximize, RefreshCw } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Logo } from '@/src/components/Logo';
+
+interface VideoPlayerProps {
+  url: string;
+  title: string;
+  type: 'live' | 'vod';
+  format?: 'hls' | 'mp4' | 'mkv' | 'ts';
+  isFavorite: boolean;
+  onClose?: () => void;
+  onToggleFavorite?: () => void;
+  inline?: boolean;
+}
+
+export const VideoPlayer: React.FC<VideoPlayerProps> = ({
+  url,
+  title,
+  type,
+  format,
+  isFavorite,
+  onClose,
+  onToggleFavorite,
+  inline = false
+}) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  
+  const [showControls, setShowControls] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  
+  const controlsTimeoutRef = useRef<NodeJS.Timeout>();
+
+  const formatTime = (seconds: number) => {
+    if (!seconds || isNaN(seconds)) return '00:00';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    return h > 0 
+      ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+      : `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    let hls: Hls | null = null;
+    let mpegtsPlayer: any = null;
+    let isMounted = true;
+
+    const attemptPlay = () => {
+      if (!isMounted) return;
+      video.play().catch(() => setIsPlaying(false));
+    };
+
+    const cleanup = () => {
+      if (hls) { hls.destroy(); hls = null; }
+      if (mpegtsPlayer) {
+        mpegtsPlayer.pause();
+        mpegtsPlayer.unload();
+        mpegtsPlayer.detachMediaElement();
+        mpegtsPlayer.destroy();
+        mpegtsPlayer = null;
+      }
+      video.pause();
+      video.src = "";
+      video.load();
+    };
+
+    const initPlayer = () => {
+      cleanup(); // Limpa tudo antes de começar
+      setIsLoading(true);
+      setHasError(false);
+
+      const lowerUrl = url.toLowerCase();
+      
+      // Detecção Refinada
+      const isMpegTs = format === 'ts' || lowerUrl.includes('.ts');
+      const isHls = format === 'hls' || lowerUrl.includes('.m3u8');
+      const isVodFile = format === 'mp4' || lowerUrl.includes('.mp4') || lowerUrl.includes('.mkv') || type === 'vod';
+
+      // 1. Prioridade VOD (Arquivos estáticos)
+      if (isVodFile && !isHls && !isMpegTs) {
+        video.src = url;
+        video.load();
+        
+        const onCanPlay = () => {
+          if (type === 'vod') {
+            const savedPos = localStorage.getItem(`playback_pos_${url}`);
+            if (savedPos) video.currentTime = parseFloat(savedPos);
+          }
+          attemptPlay();
+          video.removeEventListener('canplay', onCanPlay);
+        };
+        video.addEventListener('canplay', onCanPlay);
+      } 
+      // 2. MPEG-TS (Canais ao vivo específicos)
+      else if (isMpegTs && mpegts.getFeatureList().mseLivePlayback) {
+        mpegtsPlayer = mpegts.createPlayer({ type: 'mpegts', isLive: true, url });
+        mpegtsPlayer.attachMediaElement(video);
+        mpegtsPlayer.load();
+        attemptPlay();
+      } 
+      // 3. HLS (M3U8)
+      else if (isHls) {
+        if (Hls.isSupported()) {
+          hls = new Hls({ enableWorker: true, lowLatencyMode: type === 'live' });
+          hls.loadSource(url);
+          hls.attachMedia(video);
+          hls.on(Hls.Events.MANIFEST_PARSED, attemptPlay);
+          hls.on(Hls.Events.ERROR, (_, data) => { if (data.fatal) setHasError(true); });
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+          video.src = url;
+          video.addEventListener('loadedmetadata', attemptPlay);
+        }
+      } 
+      // Fallback Geral
+      else {
+        video.src = url;
+        attemptPlay();
+      }
+    };
+
+    initPlayer();
+
+    const handleEvents = {
+      play: () => setIsPlaying(true),
+      pause: () => setIsPlaying(false),
+      waiting: () => setIsLoading(true),
+      playing: () => setIsLoading(false),
+      timeupdate: () => {
+        setCurrentTime(video.currentTime);
+        if (type === 'vod' && video.currentTime > 5) {
+          localStorage.setItem(`playback_pos_${url}`, video.currentTime.toString());
+        }
+      },
+      loadedmetadata: () => {
+        setDuration(video.duration);
+        setIsLoading(false);
+      },
+      error: (e: any) => {
+        console.error("Erro nativo do vídeo:", video.error);
+        setHasError(true);
+        setIsLoading(false);
+      }
+    };
+
+    Object.entries(handleEvents).forEach(([ev, fn]) => video.addEventListener(ev, fn));
+
+    return () => {
+      isMounted = false;
+      Object.entries(handleEvents).forEach(([ev, fn]) => video.removeEventListener(ev, fn));
+      cleanup();
+    };
+  }, [url, retryCount]);
+
+  const togglePlay = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!videoRef.current) return;
+    isPlaying ? videoRef.current.pause() : videoRef.current.play();
+  };
+
+  return (
+    <div 
+      ref={containerRef}
+      className={inline ? "relative w-full aspect-video bg-black overflow-hidden rounded-xl" : "fixed inset-0 z-[100] bg-black flex items-center justify-center"}
+      onMouseMove={() => {
+        setShowControls(true);
+        if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+        controlsTimeoutRef.current = setTimeout(() => isPlaying && setShowControls(false), 3000);
+      }}
+    >
+      <video
+        ref={videoRef}
+        className="w-full h-full object-contain"
+        playsInline
+        autoPlay
+        onClick={togglePlay}
+      />
+
+      {isLoading && !hasError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/60 pointer-events-none">
+          <Logo className="w-12 h-12 animate-pulse text-blue-500" />
+        </div>
+      )}
+
+      {hasError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/95 z-50 p-6">
+          <div className="max-w-xs text-center bg-zinc-900 p-8 rounded-3xl border border-white/10 shadow-2xl">
+            <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+               <RefreshCw className="text-red-500 w-8 h-8" />
+            </div>
+            <h3 className="text-white font-bold text-lg mb-2">Erro no Conteúdo</h3>
+            <p className="text-white/50 text-sm mb-6">Não conseguimos carregar o vídeo. Verifique sua conexão ou tente outro título.</p>
+            <button 
+              onClick={() => setRetryCount(c => c + 1)}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl flex items-center justify-center gap-2 font-bold transition-colors"
+            >
+              Tentar Novamente
+            </button>
+          </div>
+        </div>
+      )}
+
+      <AnimatePresence>
+        {showControls && (
+          <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-black/70 flex flex-col justify-between"
+          >
+            {/* Header */}
+            <div className="p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {onClose && <button onClick={onClose} className="p-2 text-white hover:bg-white/10 rounded-full"><ArrowLeft size={24}/></button>}
+                <h2 className="text-white font-medium truncate max-w-[50vw]">{title}</h2>
+              </div>
+            </div>
+
+            {/* Middle */}
+            <div className="flex items-center justify-center gap-8">
+              {type === 'vod' && <button onClick={(e) => {e.stopPropagation(); videoRef.current!.currentTime -= 10}} className="text-white/80"><RotateCcw size={32}/></button>}
+              <button onClick={togglePlay} className="p-5 bg-white rounded-full text-black scale-110 active:scale-95 transition-transform">
+                {isPlaying ? <Pause size={30} fill="currentColor"/> : <Play size={30} fill="currentColor" className="ml-1"/>}
+              </button>
+              {type === 'vod' && <button onClick={(e) => {e.stopPropagation(); videoRef.current!.currentTime += 10}} className="text-white/80"><RotateCw size={32}/></button>}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 sm:p-8 space-y-4">
+              {type === 'vod' && (
+                <div className="space-y-2">
+                  <div 
+                    className="h-1.5 w-full bg-white/20 rounded-full cursor-pointer relative"
+                    onClick={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const pos = (e.clientX - rect.left) / rect.width;
+                      videoRef.current!.currentTime = pos * duration;
+                    }}
+                  >
+                    <div className="h-full bg-blue-500 rounded-full" style={{ width: `${(currentTime/duration)*100}%` }} />
+                  </div>
+                  <div className="flex justify-between text-xs text-white/50 font-mono">
+                    <span>{formatTime(currentTime)}</span>
+                    <span>{formatTime(duration)}</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-between items-center">
+                <button onClick={() => setIsMuted(!isMuted)} className="text-white">
+                  {isMuted || videoRef.current?.muted ? <VolumeX size={24}/> : <Volume2 size={24}/>}
+                </button>
+                {type === 'live' && (
+                  <div className="flex items-center gap-2 px-3 py-1 bg-red-600 rounded-full">
+                    <span className="w-2 h-2 bg-white rounded-full animate-pulse"/>
+                    <span className="text-white text-[10px] font-bold uppercase">Ao Vivo</span>
+                  </div>
+                )}
+                <button onClick={() => containerRef.current?.requestFullscreen()} className="text-white"><Maximize size={22}/></button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};

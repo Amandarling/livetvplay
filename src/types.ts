@@ -1,29 +1,27 @@
-export interface XtreamUser {
-  username: string;
-  password?: string;
-  status: string;
-  exp_date: string;
-  is_trial: string;
-  active_cons: string;
-  created_at: string;
-  max_connections: string;
-  allowed_output_formats: string[];
-}
-
-export interface XtreamServer {
-  url: string;
-  port: string;
-  https_port: string;
-  server_protocol: string;
-  rtmp_port: string;
-  timezone: string;
-  timestamp_now: number;
-  time_now: string;
-}
-
 export interface XtreamAuthResponse {
-  user_info: XtreamUser;
-  server_info: XtreamServer;
+  user_info: {
+    username: string;
+    password: string;
+    auth: number;
+    status: string;
+    exp_date: string;
+    is_trial: string;
+    active_cons: string;
+    max_connections: string;
+    revoked: string;
+    created_at: string;
+    allowed_output_formats: string[];
+  };
+  server_info: {
+    url: string;
+    port: string;
+    https_port: string;
+    server_protocol: string;
+    rtmp_port: string;
+    timezone: string;
+    timestamp: number;
+    time_now: string;
+  };
 }
 
 export interface XtreamCategory {
@@ -47,21 +45,5 @@ export interface XtreamStream {
   tv_archive_duration: number;
   thumbnail?: string;
   container_extension?: string;
-  rating?: string;
-  year?: string;
-}
-
-export interface EPGProgram {
-  id: string;
-  start: string;
-  end: string;
-  title: string;
-  description: string;
-  start_timestamp: string;
-  end_timestamp: string;
-  stop_timestamp?: string;
-}
-
-export interface XtreamEPGResponse {
-  epg_listings: EPGProgram[];
+  series_id?: number;
 }
