@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+@theme {
+  --color-neon-red: #ff2d55;
+  --color-neon-blue: #00d2ff;
+  --color-neon-purple: #8a2be2;
+  --color-bg-deep: #0f051d;
+}
+
+@layer base {
+  body {
+    @apply bg-bg-deep text-white;
+  }
+}

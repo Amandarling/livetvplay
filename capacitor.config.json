@@ -1,0 +1,6 @@
+{
+  "appId": "com.livetv.play",
+  "appName": "Live TV play",
+  "webDir": "dist",
+  "bundledWebRuntime": false
+}
