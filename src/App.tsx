@@ -86,6 +86,7 @@ export default function App() {
     setPreviousView(view);
     setView(newView);
     setSelectedStream(null);
+    setSearchQuery('');
   };
   const [auth, setAuth] = useState<XtreamAuthResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -188,25 +189,17 @@ export default function App() {
         xtreamService.getSeriesCategories(user, pass).catch(() => [])
       ]);
 
-      setCache(prev => ({
-        ...prev,
-        live: { ...prev.live, categories: liveCats as XtreamCategory[] },
-        movies: { ...prev.movies, categories: movieCats as XtreamCategory[] },
-        series: { ...prev.series, categories: seriesCats as XtreamCategory[] }
-      }));
-
       const [liveStreams, movieStreams, seriesStreams] = await Promise.all([
         xtreamService.getLiveStreams(user, pass).catch(() => []),
         xtreamService.getMovies(user, pass).catch(() => []),
         xtreamService.getSeries(user, pass).catch(() => [])
       ]);
 
-      setCache(prev => ({
-        ...prev,
+      setCache({
         live: { categories: liveCats as XtreamCategory[], streams: liveStreams as XtreamStream[] },
         movies: { categories: movieCats as XtreamCategory[], streams: movieStreams as XtreamStream[] },
         series: { categories: seriesCats as XtreamCategory[], streams: seriesStreams as XtreamStream[] }
-      }));
+      });
     } catch (error) {
       console.error("Pre-fetch failed:", error);
     }
@@ -214,58 +207,64 @@ export default function App() {
 
   const loadLiveContent = async (catId?: string) => {
     if (!auth) return;
-    if (view !== 'live') {
-      handleSetView('live');
-      setSelectedCategory(catId || null);
-    }
-    setContentLoading(true);
-    try {
-      const creds = JSON.parse(localStorage.getItem('iptv_creds') || '{}');
-      const cats = await xtreamService.getLiveCategories(creds.username, creds.password);
-      const items = await xtreamService.getLiveStreams(creds.username, creds.password, catId || undefined);
-      setCache(prev => ({ ...prev, live: { categories: cats, streams: items } }));
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setContentLoading(false);
+    handleSetView('live');
+    setSelectedCategory(catId || null);
+    if (cache.live.streams.length === 0) {
+      setContentLoading(true);
+      try {
+        const creds = JSON.parse(localStorage.getItem('iptv_creds') || '{}');
+        const [cats, items] = await Promise.all([
+          xtreamService.getLiveCategories(creds.username, creds.password),
+          xtreamService.getLiveStreams(creds.username, creds.password)
+        ]);
+        setCache(prev => ({ ...prev, live: { categories: cats, streams: items } }));
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setContentLoading(false);
+      }
     }
   };
 
   const loadMoviesContent = async (catId?: string) => {
     if (!auth) return;
-    if (view !== 'movies') {
-      handleSetView('movies');
-      setSelectedCategory(catId || null);
-    }
-    setContentLoading(true);
-    try {
-      const creds = JSON.parse(localStorage.getItem('iptv_creds') || '{}');
-      const cats = await xtreamService.getMovieCategories(creds.username, creds.password);
-      const items = await xtreamService.getMovies(creds.username, creds.password, catId || undefined);
-      setCache(prev => ({ ...prev, movies: { categories: cats, streams: items } }));
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setContentLoading(false);
+    handleSetView('movies');
+    setSelectedCategory(catId || null);
+    if (cache.movies.streams.length === 0) {
+      setContentLoading(true);
+      try {
+        const creds = JSON.parse(localStorage.getItem('iptv_creds') || '{}');
+        const [cats, items] = await Promise.all([
+          xtreamService.getMovieCategories(creds.username, creds.password),
+          xtreamService.getMovies(creds.username, creds.password)
+        ]);
+        setCache(prev => ({ ...prev, movies: { categories: cats, streams: items } }));
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setContentLoading(false);
+      }
     }
   };
 
   const loadSeriesContent = async (catId?: string) => {
     if (!auth) return;
-    if (view !== 'series') {
-      handleSetView('series');
-      setSelectedCategory(catId || null);
-    }
-    setContentLoading(true);
-    try {
-      const creds = JSON.parse(localStorage.getItem('iptv_creds') || '{}');
-      const cats = await xtreamService.getSeriesCategories(creds.username, creds.password);
-      const items = await xtreamService.getSeries(creds.username, creds.password, catId || undefined);
-      setCache(prev => ({ ...prev, series: { categories: cats, streams: items } }));
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setContentLoading(false);
+    handleSetView('series');
+    setSelectedCategory(catId || null);
+    if (cache.series.streams.length === 0) {
+      setContentLoading(true);
+      try {
+        const creds = JSON.parse(localStorage.getItem('iptv_creds') || '{}');
+        const [cats, items] = await Promise.all([
+          xtreamService.getSeriesCategories(creds.username, creds.password),
+          xtreamService.getSeries(creds.username, creds.password)
+        ]);
+        setCache(prev => ({ ...prev, series: { categories: cats, streams: items } }));
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setContentLoading(false);
+      }
     }
   };
 
@@ -307,15 +306,18 @@ export default function App() {
 
   const loadEPG = async () => {
     handleSetView('epg');
+    const creds = JSON.parse(localStorage.getItem('iptv_creds') || '{}');
+    if (cache.live.streams.length === 0 && auth) {
+      setContentLoading(true);
+      try {
+        const liveStreams = await xtreamService.getLiveStreams(creds.username, creds.password);
+        setCache(prev => ({ ...prev, live: { ...prev.live, streams: liveStreams } }));
+      } catch (e) {} finally { setContentLoading(false); }
+    }
+
     if (epgData) return;
     setContentLoading(true);
     try {
-      const creds = JSON.parse(localStorage.getItem('iptv_creds') || '{}');
-      let liveStreams = cache.live.streams;
-      if (liveStreams.length === 0 && auth) {
-        liveStreams = await xtreamService.getLiveStreams(creds.username, creds.password);
-        setCache(prev => ({ ...prev, live: { ...prev.live, streams: liveStreams } }));
-      }
       const data = await epgService.fetchEPG(creds.username, creds.password);
       setEpgData(data);
     } catch (error) {
@@ -467,7 +469,6 @@ export default function App() {
         <div className="flex flex-1 overflow-hidden relative">
           {hasSidebar && (
             <>
-              {/* Mobile Overlay for Collapsible Sidebar */}
               {isCollapsibleSidebar && showSidebar && (
                 <div
                   className="fixed inset-0 bg-black/50 z-40 lg:hidden"
@@ -505,9 +506,6 @@ export default function App() {
                   <button
                     onClick={() => {
                       setSelectedCategory(null);
-                      if (type === 'live') loadLiveContent();
-                      else if (type === 'movies') loadMoviesContent();
-                      else if (type === 'series') loadSeriesContent();
                       if (isCollapsibleSidebar && window.innerWidth < 1024) setShowSidebar(false);
                     }}
                     className={`w-full text-left px-3 py-1.5 flex justify-between items-center hover:bg-white/5 transition-colors ${selectedCategory === null ? 'bg-neon-red/10 border-l-2 border-neon-red' : ''}`}
@@ -520,9 +518,6 @@ export default function App() {
                       key={cat.category_id}
                       onClick={() => {
                         setSelectedCategory(cat.category_id);
-                        if (type === 'live') loadLiveContent(cat.category_id);
-                        else if (type === 'movies') loadMoviesContent(cat.category_id);
-                        else if (type === 'series') loadSeriesContent(cat.category_id);
                         if (isCollapsibleSidebar && window.innerWidth < 1024) setShowSidebar(false);
                       }}
                       className={`w-full text-left px-3 py-1.5 flex justify-between items-center hover:bg-white/5 transition-colors ${selectedCategory === cat.category_id ? 'bg-neon-red/10 border-l-2 border-neon-red' : ''}`}
@@ -533,7 +528,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Floating Toggle Button for Collapsible Sidebar */}
               {isCollapsibleSidebar && !showSidebar && (
                 <button
                   onClick={() => setShowSidebar(true)}
@@ -701,7 +695,6 @@ export default function App() {
     return (
       <div className="flex-1 flex flex-col overflow-hidden relative">
         <div className="flex flex-1 overflow-hidden relative">
-          {/* Channels Sidebar */}
           <div className="w-[240px] sm:w-[320px] bg-bg-deep border-r border-white/10 flex flex-col shrink-0 relative z-10">
             <div className="p-4 border-b border-white/10">
               <h2 className="text-xl font-black italic tracking-tighter text-neon-blue">GUIA DE PROGRAMAÇÃO</h2>
@@ -731,11 +724,9 @@ export default function App() {
             </div>
           </div>
 
-          {/* Main Area: Mini Player + EPG Grid */}
           <div className="flex-1 flex flex-col overflow-hidden bg-black/20">
             {selectedChannel ? (
               <>
-                {/* Mini Player Area */}
                 <div className="h-[30vh] sm:h-[40vh] shrink-0 bg-black relative border-b border-white/10">
                   {auth && (
                     <VideoPlayer
@@ -748,7 +739,6 @@ export default function App() {
                   )}
                 </div>
 
-                {/* EPG Grid Area */}
                 <div className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-6">
                   <div className="max-w-4xl mx-auto">
                     <div className="flex items-center gap-4 mb-6">
@@ -844,20 +834,95 @@ export default function App() {
     </div>
   );
 
+  const globalSearchResults = useMemo(() => {
+    if (!globalSearchQuery.trim()) return { live: [], movies: [], series: [] };
+    const query = globalSearchQuery.toLowerCase();
+    return {
+      live: cache.live.streams.filter(s => s.name.toLowerCase().includes(query)).slice(0, 20),
+      movies: cache.movies.streams.filter(s => s.name.toLowerCase().includes(query)).slice(0, 20),
+      series: cache.series.streams.filter(s => s.name.toLowerCase().includes(query)).slice(0, 20)
+    };
+  }, [globalSearchQuery, cache]);
+
   const renderGlobalSearch = () => (
     <div className="flex-1 flex flex-col overflow-hidden pb-12 lg:pb-0">
-      <div className="flex-1 flex flex-col p-4 sm:p-8 max-w-7xl mx-auto w-full">
+      <div className="flex-1 flex flex-col p-4 sm:p-8 max-w-7xl mx-auto w-full overflow-y-auto custom-scrollbar">
         <div className="relative mb-8">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-6 h-6 text-white/40" />
           <input
             type="text"
-            placeholder="Pesquisar canais, filmes ou séries..."
+            placeholder="Pesquisar em tudo (Canais, Filmes e Séries)..."
             className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-14 pr-4 text-xl focus:outline-none focus:ring-2 focus:ring-neon-blue transition-all"
             value={globalSearchQuery}
             onChange={(e) => setGlobalSearchQuery(e.target.value)}
             autoFocus
           />
         </div>
+
+        {globalSearchQuery.trim() && (
+          <div className="space-y-10">
+            {globalSearchResults.live.length > 0 && (
+              <section>
+                <h3 className="text-neon-red font-black italic tracking-tighter mb-4 flex items-center gap-2">
+                  <Tv className="w-5 h-5" /> CANAIS AO VIVO
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {globalSearchResults.live.map(stream => (
+                    <div key={stream.stream_id} onClick={() => { setSelectedStream(stream); addToHistory(stream); }} className="bg-white/5 p-3 rounded-xl border border-white/5 flex items-center gap-3 cursor-pointer hover:bg-white/10 transition-all group">
+                      <div className="w-12 h-12 bg-black/40 rounded flex items-center justify-center overflow-hidden shrink-0 border border-white/5">
+                        {stream.stream_icon ? <img src={stream.stream_icon} className="w-full h-full object-contain" /> : <Tv className="w-6 h-6 opacity-20" />}
+                      </div>
+                      <span className="font-bold text-sm truncate group-hover:text-neon-blue transition-colors">{stream.name}</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {globalSearchResults.movies.length > 0 && (
+              <section>
+                <h3 className="text-neon-blue font-black italic tracking-tighter mb-4 flex items-center gap-2">
+                  <Film className="w-5 h-5" /> FILMES
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
+                  {globalSearchResults.movies.map(stream => (
+                    <div key={stream.stream_id} onClick={() => { setSelectedStream(stream); addToHistory(stream); }} className="group cursor-pointer">
+                      <div className="aspect-[2/3] rounded-xl overflow-hidden border border-white/10 relative bg-black/40">
+                        {stream.stream_icon ? <img src={stream.stream_icon} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" /> : <div className="w-full h-full flex items-center justify-center"><Film className="w-10 h-10 opacity-10" /></div>}
+                      </div>
+                      <p className="mt-2 text-xs font-bold text-center truncate group-hover:text-neon-blue transition-colors px-1">{stream.name}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {globalSearchResults.series.length > 0 && (
+              <section>
+                <h3 className="text-neon-purple font-black italic tracking-tighter mb-4 flex items-center gap-2">
+                  <Clapperboard className="w-5 h-5" /> SÉRIES
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
+                  {globalSearchResults.series.map(stream => (
+                    <div key={stream.stream_id} onClick={() => { setSelectedStream(stream); addToHistory(stream); }} className="group cursor-pointer">
+                      <div className="aspect-[2/3] rounded-xl overflow-hidden border border-white/10 relative bg-black/40">
+                        {stream.stream_icon ? <img src={stream.stream_icon} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" /> : <div className="w-full h-full flex items-center justify-center"><Clapperboard className="w-10 h-10 opacity-10" /></div>}
+                      </div>
+                      <p className="mt-2 text-xs font-bold text-center truncate group-hover:text-neon-blue transition-colors px-1">{stream.name}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {globalSearchResults.live.length === 0 && globalSearchResults.movies.length === 0 && globalSearchResults.series.length === 0 && (
+              <div className="text-center py-20 text-white/20">
+                <Search className="w-16 h-16 mx-auto mb-4 opacity-10" />
+                <p className="text-xl font-bold uppercase tracking-widest">Nenhum resultado encontrado</p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

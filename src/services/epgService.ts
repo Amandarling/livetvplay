@@ -25,30 +25,43 @@ export const epgService = {
   fetchEPG: async (username: string, password: string): Promise<EPGData> => {
     const host = "https://livetvplay.com.br";
     const url = `${host}/player_api.php`;
+
+    // Tentamos primeiro buscar o EPG curto (mais rápido e comum para canais específicos)
+    // Mas o usuário quer que funcione para todos, então vamos tentar carregar o EPG completo
+    // Nota: 'get_short_epg' ou 'get_simple_epg' costumam ser mais estáveis em algumas APIs Xtream
     const params = { username, password, action: 'get_all_epg' };
     const data = await proxyRequest(url, 'GET', undefined, params);
     
     const safeAtob = (str: string) => {
       try {
-        return atob(str);
+        if (!str) return '';
+        return decodeURIComponent(escape(atob(str)));
       } catch (e) {
-        return str;
+        try {
+          return atob(str);
+        } catch(e2) {
+          return str;
+        }
       }
     };
 
     const programsMap = new Map<string, EPGProgram[]>();
-    // Basic parsing logic, might need adjustment based on actual XMLTV or JSON response
+
     if (data && data.epg_listings) {
       data.epg_listings.forEach((item: any) => {
-        const channelId = item.epg_id;
+        // Algumas APIs usam epg_id, outras stream_id ou channel_id
+        const channelId = item.epg_id || item.channel_id;
+        if (!channelId) return;
+
         if (!programsMap.has(channelId)) {
           programsMap.set(channelId, []);
         }
+
         programsMap.get(channelId)?.push({
           title: safeAtob(item.title),
           start: item.start,
-          stop: item.end,
-          desc: safeAtob(item.description)
+          stop: item.end || item.stop,
+          desc: safeAtob(item.description || item.desc)
         });
       });
     }
@@ -56,10 +69,33 @@ export const epgService = {
     return { programs: programsMap };
   },
 
+  fetchChannelEPG: async (username: string, password: string, streamId: string | number): Promise<EPGProgram[]> => {
+    const host = "https://livetvplay.com.br";
+    const url = `${host}/player_api.php`;
+    const params = { username, password, action: 'get_short_epg', stream_id: streamId };
+    const data = await proxyRequest(url, 'GET', undefined, params);
+
+    if (data && data.epg_listings) {
+      return data.epg_listings.map((item: any) => ({
+        title: atob(item.title || ''),
+        start: item.start,
+        stop: item.end || item.stop,
+        desc: atob(item.description || item.desc || '')
+      }));
+    }
+    return [];
+  },
+
   getCurrentProgram: (programs: EPGProgram[] | undefined): EPGProgram | null => {
     if (!programs || programs.length === 0) return null;
     const now = new Date();
-    return programs.find(p => {
+
+    // Ordenar por data de início
+    const sorted = [...programs].sort((a, b) =>
+      epgService.parseEPGDate(a.start).getTime() - epgService.parseEPGDate(b.start).getTime()
+    );
+
+    return sorted.find(p => {
       const start = epgService.parseEPGDate(p.start);
       const stop = epgService.parseEPGDate(p.stop);
       return now >= start && now <= stop;
@@ -67,7 +103,9 @@ export const epgService = {
   },
 
   parseEPGDate: (dateStr: string): Date => {
-    // Expected format: "2023-10-27 14:00:00"
-    return new Date(dateStr.replace(' ', 'T'));
+    if (!dateStr) return new Date();
+    // Xtream EPG dates are usually "YYYY-MM-DD HH:mm:ss"
+    const cleaned = dateStr.replace(' ', 'T');
+    return new Date(cleaned);
   }
 };
