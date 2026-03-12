@@ -6,8 +6,8 @@ import {
   getSeriesCategories, getSeries, getSeriesInfo, getSeriesStreamUrl,
   XtreamSeriesInfo
 } from '@/lib/xtream';
-import LivePlayer from './LivePlayer';
-import VodPlayer from './VodPlayer';
+import { LivePlayer } from './LivePlayer';
+import { VodPlayer } from './VodPlayer';
 import { Tv, Film, Clapperboard, Search, LogOut, Radio, ChevronRight, Loader2 } from 'lucide-react';
 
 type Tab = 'live' | 'movies' | 'series';
@@ -104,7 +104,7 @@ export default function Dashboard({ credentials, onLogout }: DashboardProps) {
   if (playingLive) {
     return (
       <div className="h-screen w-screen">
-        <LivePlayer url={playingLive.url} onBack={() => setPlayingLive(null)} />
+        <LivePlayer url={playingLive.url} title={playingLive.name} onClose={() => setPlayingLive(null)} />
       </div>
     );
   }
@@ -112,7 +112,7 @@ export default function Dashboard({ credentials, onLogout }: DashboardProps) {
   if (playingVod) {
     return (
       <div className="h-screen w-screen">
-        <VodPlayer url={playingVod.url} title={playingVod.title} onBack={() => setPlayingVod(null)} />
+        <VodPlayer url={playingVod.url} title={playingVod.title} onClose={() => setPlayingVod(null)} />
       </div>
     );
   }
@@ -120,7 +120,7 @@ export default function Dashboard({ credentials, onLogout }: DashboardProps) {
   if (playingSeries) {
     return (
       <div className="h-screen w-screen">
-        <VodPlayer url={playingSeries.url} title={playingSeries.title} onBack={() => setPlayingSeries(null)} />
+        <VodPlayer url={playingSeries.url} title={playingSeries.title} onClose={() => setPlayingSeries(null)} />
       </div>
     );
   }

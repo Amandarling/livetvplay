@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import {
-  Tv, Film, Clapperboard, Settings, Search, User, MoreVertical,
-  ChevronLeft, ChevronRight, Play, Clock, Lock, ShieldCheck, Radio, Mic,
+import { 
+  Tv, Film, Clapperboard, Settings, Search, User, MoreVertical, 
+  ChevronLeft, ChevronRight, Play, Clock, Lock, ShieldCheck, Radio, Mic, 
   LogOut, Eye, EyeOff, ArrowLeft, LayoutGrid, History, Star, Zap, Calendar
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { xtreamService } from '@/src/services/xtreamService';
 import { epgService, EPGData } from '@/src/services/epgService';
 import { Logo } from '@/src/components/Logo';
-import { VideoPlayer } from '@/src/components/VideoPlayer';
+import { LivePlayer } from '@/src/components/LivePlayer';
+import { VodPlayer } from '@/src/components/VodPlayer';
 import { XtreamAuthResponse, XtreamCategory, XtreamStream } from '@/src/types';
 
 const LoadingOverlay = () => (
@@ -17,6 +18,31 @@ const LoadingOverlay = () => (
     <p className="text-white font-medium animate-pulse uppercase tracking-widest">Carregando conteúdo...</p>
   </div>
 );
+
+const BottomNav = ({ activeView, handleSetView, loadLive, loadMovies, loadSeries }: any) => {
+  const items = [
+    { id: 'dashboard', icon: LayoutGrid, label: 'Início', action: () => handleSetView('dashboard') },
+    { id: 'live', icon: Tv, label: 'Canais', action: () => loadLive() },
+    { id: 'movies', icon: Film, label: 'Filmes', action: () => loadMovies() },
+    { id: 'series', icon: Clapperboard, label: 'Séries', action: () => loadSeries() },
+    { id: 'favorites', icon: Star, label: 'Favs', action: () => handleSetView('favorites') },
+  ];
+
+  return (
+    <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-bg-deep/95 backdrop-blur-xl border-t border-white/10 flex justify-around items-center p-1 z-50 pb-safe">
+      {items.map((item) => (
+        <button
+          key={item.id}
+          onClick={item.action}
+          className={`flex flex-col items-center gap-0.5 p-1 transition-all ${activeView === item.id ? 'text-neon-red scale-110' : 'text-white/40'}`}
+        >
+          <item.icon className="w-5 h-5" />
+          <span className="text-[8px] font-bold uppercase tracking-tighter">{item.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+};
 
 const Header = ({ title, onBack, user, onSettings, onProfile, onLogout, onSearch }: any) => {
   const [time, setTime] = useState(new Date());
@@ -52,14 +78,14 @@ const Header = ({ title, onBack, user, onSettings, onProfile, onLogout, onSearch
           <Search className="w-4 h-4 group-hover:scale-110 transition-transform" />
           <span className="hidden sm:inline font-bold uppercase text-[10px] tracking-widest">Pesquisar</span>
         </div>
-
+        
         <div className="flex items-center gap-3">
           <button onClick={onProfile} className="p-1.5 hover:bg-white/10 rounded-lg transition-all hover:text-neon-blue">
             <User className="w-4 h-4" />
           </button>
-
+          
           {onLogout && (
-            <button
+            <button 
               onClick={onLogout}
               className="flex items-center gap-2 bg-neon-red/10 hover:bg-neon-red/20 px-3 py-1.5 rounded-lg text-neon-red transition-all group border border-neon-red/20"
             >
@@ -93,7 +119,7 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [epgData, setEpgData] = useState<EPGData | null>(null);
   const [showSidebar, setShowSidebar] = useState(false);
-
+  
   const [favorites, setFavorites] = useState<XtreamStream[]>([]);
   const [history, setHistory] = useState<XtreamStream[]>([]);
 
@@ -115,6 +141,8 @@ export default function App() {
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+
+  const FIXED_DNS = "https://livetvplay.com.br";
 
   const loadUserData = (user: string) => {
     const favs = JSON.parse(localStorage.getItem(`iptv_favs_${user}`) || '[]');
@@ -331,37 +359,37 @@ export default function App() {
         <div className="absolute top-1/4 left-1/4 w-[300px] h-[300px] bg-neon-red/5 blur-[100px] rounded-full"></div>
         <div className="absolute bottom-1/4 right-1/4 w-[300px] h-[300px] bg-neon-blue/5 blur-[100px] rounded-full"></div>
       </div>
-
-      <motion.div
+      
+      <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         className="w-full max-w-[280px] relative z-10 flex flex-col items-center gap-4 my-auto"
       >
         <Logo className="w-36 h-36 drop-shadow-[0_0_40px_rgba(255,255,255,0.2)]" />
-
+        
         <div className="w-full bg-white/5 backdrop-blur-2xl p-5 rounded-[1.5rem] border border-white/10 shadow-2xl">
           <form onSubmit={handleLogin} className="space-y-3 w-full">
             <div className="space-y-1">
-              <input
-                type="text"
-                placeholder="Usuário"
+              <input 
+                type="text" 
+                placeholder="Usuário" 
                 className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-[12px] text-white placeholder:text-white/20 focus:outline-none focus:ring-1 focus:ring-neon-red transition-all font-bold"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
               />
             </div>
-
+            
             <div className="relative">
-              <input
-                type={showPassword ? "text" : "password"}
-                placeholder="Senha"
+              <input 
+                type={showPassword ? "text" : "password"} 
+                placeholder="Senha" 
                 className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-[12px] text-white placeholder:text-white/20 focus:outline-none focus:ring-1 focus:ring-neon-red transition-all font-bold"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
-              <button
+              <button 
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white transition-colors"
@@ -369,9 +397,9 @@ export default function App() {
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
-
-            <button
-              type="submit"
+            
+            <button 
+              type="submit" 
               className="w-full bg-gradient-to-r from-neon-red to-neon-purple text-white font-black py-2.5 rounded-lg hover:opacity-90 transition-all transform active:scale-[0.98] shadow-lg uppercase tracking-[0.2em] text-[10px] mt-1"
             >
               ENTRAR
@@ -387,7 +415,7 @@ export default function App() {
       <main className="flex-1 p-4 lg:p-10 flex flex-col justify-center min-h-0 overflow-hidden">
         <div className="max-w-[1600px] mx-auto w-full flex-1 flex flex-col landscape:flex-row md:flex-row gap-2 sm:gap-3 md:gap-6 lg:gap-8 min-h-0">
           <div className="w-full landscape:w-[45%] md:w-[45%] xl:w-[40%] flex flex-col flex-1 min-h-0">
-            <motion.div
+            <motion.div 
               whileHover={{ scale: 1.01, y: -2 }}
               whileTap={{ scale: 0.99 }}
               onClick={() => loadLiveContent()}
@@ -405,7 +433,7 @@ export default function App() {
           </div>
           <div className="w-full landscape:w-[55%] md:w-[55%] xl:w-[60%] flex flex-col flex-1 gap-2 sm:gap-3 md:gap-6 lg:gap-8 min-h-0">
             <div className="grid grid-cols-2 gap-2 sm:gap-3 md:gap-6 lg:gap-8 flex-1 min-h-0">
-              <motion.div
+              <motion.div 
                 whileHover={{ scale: 1.01, y: -2 }}
                 whileTap={{ scale: 0.99 }}
                 onClick={() => loadMoviesContent()}
@@ -418,7 +446,7 @@ export default function App() {
                   <h2 className="text-base sm:text-lg md:text-2xl lg:text-4xl font-black tracking-tighter italic drop-shadow-xl uppercase leading-none">FILMES</h2>
                 </div>
               </motion.div>
-              <motion.div
+              <motion.div 
                 whileHover={{ scale: 1.01, y: -2 }}
                 whileTap={{ scale: 0.99 }}
                 onClick={() => loadSeriesContent()}
@@ -438,7 +466,7 @@ export default function App() {
                 { id: 'favorites', icon: Star, label: 'FAVORITOS', color: 'neon-blue', action: () => handleSetView('favorites') },
                 { id: 'history', icon: History, label: 'HISTÓRICO', color: 'neon-purple', action: () => handleSetView('history') }
               ].map((item) => (
-                <motion.div
+                <motion.div 
                   key={item.id}
                   whileHover={{ scale: 1.02, y: -2 }}
                   onClick={item.action}
@@ -469,7 +497,7 @@ export default function App() {
             <>
               {/* Mobile Overlay for Collapsible Sidebar */}
               {isCollapsibleSidebar && showSidebar && (
-                <div
+                <div 
                   className="fixed inset-0 bg-black/50 z-40 lg:hidden"
                   onClick={() => setShowSidebar(false)}
                 />
@@ -484,16 +512,16 @@ export default function App() {
                 <div className="p-2 flex items-center justify-between">
                   <div className="relative flex-1">
                     <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-white/40" />
-                    <input
-                      type="text"
-                      placeholder="Pesquisa..."
+                    <input 
+                      type="text" 
+                      placeholder="Pesquisa..." 
                       className="w-full bg-white/5 border border-white/5 rounded-md py-1 pl-6 pr-2 text-[10px] focus:outline-none focus:ring-1 focus:ring-neon-blue"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
                   </div>
                   {isCollapsibleSidebar && (
-                    <button
+                    <button 
                       onClick={() => setShowSidebar(false)}
                       className="lg:hidden ml-2 p-2 hover:bg-white/10 rounded-lg"
                     >
@@ -502,7 +530,7 @@ export default function App() {
                   )}
                 </div>
                 <div className="flex-1 overflow-y-auto custom-scrollbar">
-                  <button
+                  <button 
                     onClick={() => {
                       setSelectedCategory(null);
                       if (type === 'live') loadLiveContent();
@@ -516,7 +544,7 @@ export default function App() {
                     <span className="text-[8px] opacity-60">{currentStreams.length}</span>
                   </button>
                   {currentCategories.map(cat => (
-                    <button
+                    <button 
                       key={cat.category_id}
                       onClick={() => {
                         setSelectedCategory(cat.category_id);
@@ -551,12 +579,12 @@ export default function App() {
                 <Logo className="w-12 h-12 animate-bounce" />
               </div>
             )}
-
+            
             {!hasSidebar && (
               <div className="mb-6 relative max-w-md mx-auto">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/40" />
-                <input
-                  type="text"
+                <input 
+                  type="text" 
                   placeholder={`Pesquisar em ${type === 'favorites' ? 'Favoritos' : 'Histórico'}...`}
                   className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-12 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-neon-blue transition-all"
                   value={searchQuery}
@@ -571,7 +599,7 @@ export default function App() {
                   const programs = epgData?.programs.get(stream.epg_channel_id) || epgData?.programs.get(stream.name);
                   const currentProgram = epgService.getCurrentProgram(programs);
                   return (
-                    <motion.div
+                    <motion.div 
                       key={stream.stream_id}
                       whileHover={{ x: 3 }}
                       whileTap={{ scale: 0.99 }}
@@ -599,7 +627,7 @@ export default function App() {
                           <p className="text-[9px] text-white/20 italic truncate">Sem info</p>
                         )}
                       </div>
-                      <button
+                      <button 
                         onClick={(e) => {
                           e.stopPropagation();
                           toggleFavorite(stream);
@@ -616,7 +644,7 @@ export default function App() {
             ) : (
               <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 xl:grid-cols-12 gap-1.5 sm:gap-2 lg:gap-3">
                 {filteredStreams.slice(0, 300).map(stream => (
-                  <motion.div
+                  <motion.div 
                     key={stream.stream_id}
                     whileHover={{ scale: 1.05, zIndex: 10 }}
                     whileTap={{ scale: 0.95 }}
@@ -626,7 +654,7 @@ export default function App() {
                     }}
                     className="bg-white/5 rounded-lg overflow-hidden border border-white/10 cursor-pointer group flex flex-col shadow-lg hover:shadow-neon-blue/20 transition-all duration-200 relative"
                   >
-                    <button
+                    <button 
                       onClick={(e) => {
                         e.stopPropagation();
                         toggleFavorite(stream);
@@ -637,9 +665,9 @@ export default function App() {
                     </button>
                     <div className="aspect-[2/3] relative bg-black/40 overflow-hidden">
                       {stream.stream_icon || stream.thumbnail ? (
-                        <img
-                          src={stream.stream_icon || stream.thumbnail}
-                          alt={stream.name}
+                        <img 
+                          src={stream.stream_icon || stream.thumbnail} 
+                          alt={stream.name} 
                           className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
                           referrerPolicy="no-referrer"
                           loading="lazy"
@@ -657,6 +685,23 @@ export default function App() {
                     </div>
                   </motion.div>
                 ))}
+                {filteredStreams.length === 0 && !contentLoading && (
+                  <div className="col-span-full flex flex-col items-center justify-center py-20 text-white/40">
+                    {type === 'favorites' ? (
+                      <>
+                        <Star className="w-16 h-16 mb-4 opacity-20" />
+                        <p className="text-lg font-bold uppercase tracking-widest">Nenhum favorito encontrado</p>
+                      </>
+                    ) : type === 'history' ? (
+                      <>
+                        <History className="w-16 h-16 mb-4 opacity-20" />
+                        <p className="text-lg font-bold uppercase tracking-widest">Histórico vazio</p>
+                      </>
+                    ) : (
+                      <p className="text-lg font-bold uppercase tracking-widest">Nenhum conteúdo encontrado</p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -674,7 +719,7 @@ export default function App() {
               { icon: Settings, label: 'Configurações Gerais', color: 'neon-blue' },
               { icon: Clock, label: 'EPG', color: 'neon-red' },
             ].map((item, i) => (
-              <motion.div
+              <motion.div 
                 key={i}
                 whileHover={{ scale: 1.05, y: -5 }}
                 whileTap={{ scale: 0.95 }}
@@ -708,7 +753,7 @@ export default function App() {
             </div>
             <div className="flex-1 overflow-y-auto custom-scrollbar">
               {channels.map(stream => (
-                <button
+                <button 
                   key={stream.stream_id}
                   onClick={() => setSelectedEpgChannel(stream)}
                   className={`w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-white/5 transition-colors border-b border-white/5 ${selectedChannel?.stream_id === stream.stream_id ? 'bg-neon-red/20 border-l-4 border-l-neon-red' : 'border-l-4 border-l-transparent'}`}
@@ -738,10 +783,9 @@ export default function App() {
                 {/* Mini Player Area */}
                 <div className="h-[30vh] sm:h-[40vh] shrink-0 bg-black relative border-b border-white/10">
                   {auth && (
-                    <VideoPlayer
+                    <LivePlayer
                       url={selectedChannel.direct_source ? xtreamService.getProxiedUrl(selectedChannel.direct_source) : xtreamService.getStreamUrl(auth.user_info.username, auth.user_info.password, selectedChannel.stream_id, 'm3u8')}
                       title={selectedChannel.name}
-                      type="live"
                       onClose={() => setSelectedEpgChannel(null)}
                       inline={true}
                     />
@@ -769,10 +813,10 @@ export default function App() {
                           const isCurrent = currentProgram === prog;
                           const start = epgService.parseEPGDate(prog.start);
                           const stop = epgService.parseEPGDate(prog.stop);
-
+                          
                           return (
-                            <div
-                              key={idx}
+                            <div 
+                              key={idx} 
                               className={`p-4 rounded-xl border transition-all ${isCurrent ? 'bg-neon-blue/10 border-neon-blue/30 shadow-[0_0_15px_rgba(10,132,255,0.1)]' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
                             >
                               <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-6">
@@ -849,9 +893,9 @@ export default function App() {
       <div className="flex-1 flex flex-col p-4 sm:p-8 max-w-7xl mx-auto w-full">
         <div className="relative mb-8">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-6 h-6 text-white/40" />
-          <input
-            type="text"
-            placeholder="Pesquisar canais, filmes ou séries..."
+          <input 
+            type="text" 
+            placeholder="Pesquisar canais, filmes ou séries..." 
             className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-14 pr-4 text-xl focus:outline-none focus:ring-2 focus:ring-neon-blue transition-all"
             value={globalSearchQuery}
             onChange={(e) => setGlobalSearchQuery(e.target.value)}
@@ -872,24 +916,25 @@ export default function App() {
       {loading && <LoadingOverlay />}
 
       {selectedStream && auth && (
-        <VideoPlayer
-          url={selectedStream.stream_type === 'live'
-            ? (selectedStream.direct_source ? xtreamService.getProxiedUrl(selectedStream.direct_source) : xtreamService.getStreamUrl(auth.user_info.username, auth.user_info.password, selectedStream.stream_id, 'm3u8'))
-            : (selectedStream.stream_type === 'movie'
-              ? xtreamService.getMovieUrl(auth.user_info.username, auth.user_info.password, selectedStream.stream_id, selectedStream.container_extension || 'mp4')
-              : xtreamService.getSeriesUrl(auth.user_info.username, auth.user_info.password, selectedStream.stream_id, selectedStream.container_extension || 'mp4')
-            )
-          }
-          title={selectedStream.name}
-          type={selectedStream.stream_type as any}
-          isFavorite={favorites.some(f => f.stream_id === selectedStream.stream_id)}
-          onClose={() => setSelectedStream(null)}
-          onToggleFavorite={() => toggleFavorite(selectedStream)}
-        />
+        selectedStream.stream_type === 'live' ? (
+          <LivePlayer
+            url={selectedStream.direct_source ? xtreamService.getProxiedUrl(selectedStream.direct_source) : xtreamService.getStreamUrl(auth.user_info.username, auth.user_info.password, selectedStream.stream_id, 'm3u8')}
+            title={selectedStream.name}
+            onClose={() => setSelectedStream(null)}
+          />
+        ) : (
+          <VodPlayer
+  url={selectedStream.stream_type === 'movie' 
+    ? xtreamService.getMovieUrl(auth?.user_info?.username || '', auth?.user_info?.password || '', selectedStream.stream_id, selectedStream.container_extension || 'mp4') 
+    : xtreamService.getSeriesUrl(auth?.user_info?.username || '', auth?.user_info?.password || '', selectedStream.stream_id, selectedStream.container_extension || 'mp4')}
+  title={selectedStream.name}
+  onClose={() => setSelectedStream(null)}
+/>
+        )
       )}
 
       {auth && view !== 'login' && (
-        <Header
+        <Header 
           onBack={view !== 'dashboard' ? () => handleSetView('dashboard') : undefined}
           user={auth}
           onSettings={() => handleSetView('settings')}
